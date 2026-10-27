@@ -21,6 +21,36 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+MODULE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = MODULE_DIR.parent
+
+
+def get_data_dir() -> Path:
+    """Return the writable data directory for Eclipse SQLite database and secrets."""
+    env_dir = os.environ.get("ECLIPSE_DATA_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    try:
+        from com.chaquo.python import Python
+        context = Python.getPlatform().getApplication()
+        if context is not None:
+            p = Path(str(context.getFilesDir().getAbsolutePath())) / "data"
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+    except Exception:
+        pass
+
+    p = MODULE_DIR / "data"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+DATA_DIR = get_data_dir()
+DB_PATH = DATA_DIR / "eclipse.db"
+
 try:
     from eclipse import vault
 except ImportError:
@@ -38,11 +68,6 @@ lore = None
 preset_defaults = None
 conn_rules = None
 
-MODULE_DIR = Path(__file__).resolve().parent
-DATA_DIR = MODULE_DIR / "data"
-DB_PATH = DATA_DIR / "eclipse.db"
-ROOT_DIR = MODULE_DIR.parent
-
 # Settings whose values are secrets: stored encrypted, never returned by get_all_settings().
 SECRET_SETTINGS = {"gateway_key", "search_api_key"}
 
@@ -52,12 +77,14 @@ _INIT_LOCK = threading.Lock()
 
 def _restrict_permissions() -> None:
     """Keep the vault readable by the owning user only (no-op where chmod is unsupported)."""
+    data_dir = get_data_dir()
+    db_path = data_dir / "eclipse.db"
     try:
-        os.chmod(DATA_DIR, 0o700)
+        os.chmod(data_dir, 0o700)
     except OSError:
         pass
     for suffix in ("", "-wal", "-shm", "-journal"):
-        p = Path(str(DB_PATH) + suffix)
+        p = Path(str(db_path) + suffix)
         if p.exists():
             try:
                 os.chmod(p, 0o600)
@@ -67,6 +94,9 @@ def _restrict_permissions() -> None:
 
 def get_db_connection() -> sqlite3.Connection:
     """Ensure data directory exists and return an SQLite connection with optimized concurrency pragmas."""
+    global DATA_DIR, DB_PATH
+    DATA_DIR = get_data_dir()
+    DB_PATH = DATA_DIR / "eclipse.db"
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), timeout=15.0)
     conn.row_factory = sqlite3.Row

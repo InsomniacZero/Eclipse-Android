@@ -568,6 +568,24 @@ def get_running_thread_workers() -> List[str]:
         ]
 
 
+def stop_all_workers() -> None:
+    """Stop all running in-process workers and disable the watchdog supervisor."""
+    global _WATCHDOG_ACTIVE
+    _WATCHDOG_ACTIVE = False
+    with _WORKER_LOCK:
+        for pid in list(_RUNNING_WORKERS.keys()):
+            info = _RUNNING_WORKERS.pop(pid, None)
+            if info:
+                info["active"] = False
+                server = info.get("server")
+                if server:
+                    try:
+                        server.shutdown()
+                        server.server_close()
+                    except Exception:
+                        pass
+
+
 # ==============================================================================
 # Standalone CLI Entry Point
 # ==============================================================================

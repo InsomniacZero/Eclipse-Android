@@ -59,3 +59,14 @@ skills-lock.json
 # Local docs and test suites (excluded from public release)
 docs/
 tests/
+
+# Android Build Artifacts
+.gradle/
+build/
+android/app/build/
+android/.gradle/
+android/app/src/main/python/eclipse/
+*.apk
+*.aab
+local.properties
+

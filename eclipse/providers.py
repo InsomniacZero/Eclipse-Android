@@ -10,6 +10,7 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -1064,6 +1065,17 @@ def get_dynamic_models_catalog() -> List[Dict[str, Any]]:
 
 def get_pid_for_port(port: int) -> Optional[int]:
     """Find PID listening on a given port across Linux, macOS, and Windows."""
+    # Under Chaquopy / Android sandbox, lsof is absent; probe TCP socket on loopback
+    if os.environ.get("ECLIPSE_CHAQUOPY") == "1" or (os.environ.get("ANDROID_ROOT") is not None and not os.environ.get("TERMUX_VERSION") and "/com.termux/" not in os.environ.get("PREFIX", "")):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.2)
+                if s.connect_ex(("127.0.0.1", port)) == 0:
+                    return os.getpid()
+        except Exception:
+            pass
+        return None
+
     if sys.platform == "win32":
         try:
             res = subprocess.run(

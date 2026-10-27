@@ -34,9 +34,34 @@ from pathlib import Path
 from typing import Optional
 
 MODULE_DIR = Path(__file__).resolve().parent
-DATA_DIR = MODULE_DIR / "data"
-KEY_FILE = DATA_DIR / "vault.key"
-DPAPI_KEY_FILE = DATA_DIR / "vault.key.dpapi"
+try:
+    from eclipse.db import DATA_DIR, get_data_dir
+except ImportError:
+    try:
+        from db import DATA_DIR, get_data_dir
+    except ImportError:
+        def get_data_dir() -> Path:
+            env_dir = os.environ.get("ECLIPSE_DATA_DIR")
+            if env_dir:
+                p = Path(env_dir)
+                p.mkdir(parents=True, exist_ok=True)
+                return p
+            try:
+                from com.chaquo.python import Python
+                context = Python.getPlatform().getApplication()
+                if context is not None:
+                    p = Path(str(context.getFilesDir().getAbsolutePath())) / "data"
+                    p.mkdir(parents=True, exist_ok=True)
+                    return p
+            except Exception:
+                pass
+            p = MODULE_DIR / "data"
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        DATA_DIR = get_data_dir()
+
+KEY_FILE = get_data_dir() / "vault.key"
+DPAPI_KEY_FILE = get_data_dir() / "vault.key.dpapi"
 
 PREFIX = "enc:v1:"
 _NONCE_LEN = 16
@@ -196,10 +221,11 @@ def _dpapi(data: bytes, protect: bool) -> Optional[bytes]:
 
 
 def _win_load() -> Optional[bytes]:
-    if sys.platform != "win32" or not DPAPI_KEY_FILE.exists():
+    dpapi_key_file = get_data_dir() / "vault.key.dpapi"
+    if sys.platform != "win32" or not dpapi_key_file.exists():
         return None
     try:
-        out = _dpapi(DPAPI_KEY_FILE.read_bytes(), protect=False)
+        out = _dpapi(dpapi_key_file.read_bytes(), protect=False)
     except OSError:
         return None
     return out if out and len(out) == 32 else None
@@ -209,8 +235,9 @@ def _win_store(key: bytes) -> bool:
     blob = _dpapi(key, protect=True)
     if not blob:
         return False
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    DPAPI_KEY_FILE.write_bytes(blob)
+    data_dir = get_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "vault.key.dpapi").write_bytes(blob)
     return _win_load() == key
 
 
@@ -218,15 +245,18 @@ def _win_store(key: bytes) -> bool:
 
 def _file_load() -> Optional[bytes]:
     try:
-        return _parse_hex_key(KEY_FILE.read_text(encoding="ascii"))
+        key_file = get_data_dir() / "vault.key"
+        return _parse_hex_key(key_file.read_text(encoding="ascii"))
     except OSError:
         return None
 
 
 def _file_store(key: bytes) -> bool:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    data_dir = get_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    key_file = data_dir / "vault.key"
     try:
-        fd = os.open(str(KEY_FILE), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(str(key_file), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
         return _file_load() == key
     with os.fdopen(fd, "w", encoding="ascii") as f:

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_eclipse"
+        android:icon="@drawable/ic_eclipse"
+        android:title="@string/title_eclipse" />
+    <item
+        android:id="@+id/nav_janitor"
+        android:icon="@drawable/ic_janitor"
+        android:title="@string/title_janitor" />
+</menu>

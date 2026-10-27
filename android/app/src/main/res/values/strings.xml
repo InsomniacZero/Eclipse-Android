@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Eclipse</string>
+    <string name="title_eclipse">Eclipse</string>
+    <string name="title_janitor">JanitorAI</string>
+    <string name="starting_gateway">Starting Eclipse Gateway…</string>
+    <string name="gateway_running">Eclipse Gateway Active (127.0.0.1:5000)</string>
+    <string name="service_notification_channel">Eclipse Gateway Service</string>
+    <string name="stop_service">Stop Gateway</string>
+</resources>

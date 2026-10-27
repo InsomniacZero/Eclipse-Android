@@ -2845,8 +2845,31 @@ async def on_startup():
         start_provider("gemini")
     except Exception:
         pass
+
+
+def is_android_apk() -> bool:
+    """Return True if running inside an Android APK (Chaquopy or Android runtime)."""
+    if os.environ.get("ECLIPSE_CHAQUOPY") == "1":
+        return True
+    try:
+        from com.chaquo.python import Python
+        return True
+    except Exception:
+        pass
+    if os.environ.get("ANDROID_ROOT") is not None and not os.environ.get("TERMUX_VERSION") and "/com.termux/" not in os.environ.get("PREFIX", ""):
+        return True
+    return False
+
+
 def free_listening_ports(ports: List[int]):
     """Terminate stale processes listening on specified ports so uvicorn can bind cleanly."""
+    if is_android_apk():
+        try:
+            worker.stop_all_workers()
+        except Exception:
+            pass
+        return
+
     import signal
     current_pid = os.getpid()
     for p in ports:
@@ -2970,8 +2993,59 @@ def main():
         logging.getLogger("uvicorn.access").propagate = False
         logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
 
-    uvicorn.run(app, host=host, port=port, access_log=debug_mode, log_level="info" if debug_mode else "warning")
+    global _GATEWAY_SERVER
+    config = uvicorn.Config(app, host=host, port=port, access_log=debug_mode, log_level="info" if debug_mode else "warning")
+    _GATEWAY_SERVER = uvicorn.Server(config)
+    _GATEWAY_SERVER.run()
+
+
+_GATEWAY_SERVER: Optional[uvicorn.Server] = None
+
+
+def start_gateway(host: str = "127.0.0.1", port: int = 5000):
+    """Programmatic entry point to run Eclipse gateway (used by Chaquopy Android Service)."""
+    global _GATEWAY_SERVER
+    free_listening_ports([port])
+
+    try:
+        db.init_db()
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+
+    try:
+        worker.ensure_supervisor_running()
+        start_provider("gemini")
+    except Exception:
+        pass
+
+    debug_mode = os.getenv("ECLIPSE_DEBUG", "").lower() in ("1", "true", "yes")
+    if not debug_mode:
+        logging.getLogger("uvicorn.access").disabled = True
+        logging.getLogger("uvicorn.access").propagate = False
+        logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+
+    config = uvicorn.Config(
+        app=app,
+        host=host,
+        port=port,
+        access_log=debug_mode,
+        log_level="info" if debug_mode else "warning",
+    )
+    _GATEWAY_SERVER = uvicorn.Server(config)
+    _GATEWAY_SERVER.run()
+
+
+def stop_gateway():
+    """Programmatically stop the running Eclipse gateway and in-process workers."""
+    global _GATEWAY_SERVER
+    try:
+        worker.stop_all_workers()
+    except Exception:
+        pass
+    if _GATEWAY_SERVER is not None:
+        _GATEWAY_SERVER.should_exit = True
 
 
 if __name__ == "__main__":
     main()
+
